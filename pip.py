@@ -1,13 +1,17 @@
-# -*- coding: utf-8 -*-
-# In[0]: Imports
+#coding: utf-8
 import os
-import re
 import io
+import re
+import ui
 import sys
+import urllib
 import tarfile
+import workflow
 import requests as r
+import console
 
-# In[1]: Settings
+# In[0]: Settings
+
 s = r.session()
 s.headers = {
     'User-Agent': 'trenson.gilles@gmail.com'
@@ -19,7 +23,7 @@ python2packages = {
     'pxy': '0.12'
 }
 
-# In[2]: Functions
+# In[1]: Helper functions
 
 def filter_release_version(release_details, version):
     return next(iter(filter(lambda x: version in x.get('python_version'), release_details)), None)
@@ -48,39 +52,93 @@ def select_latest(pypi_info, version='2.7'):
         return specific_package
     return None
 
-# In[3]: Accessing the API
+# In[2]: UI Class
 
-if __name__ == '__main__' and len(sys.argv) > 1:
+class TextFieldDelegate (object):
+	def textfield_did_begin_editing(self, textfield):
+		textfield.text_color = 'black'
 
-    pkg = sys.argv[1].lower()
+class InputView(ui.View):
+	
+	def __init__(self):
+		# Size
+		self.width = 300
+		self.height = 80
+		# Attributes
+		self.name = 'Install'
+		self.tint_color = 'white'
+		self.background_color = '#545659'
+		self.border_width = 2
+		self.border_color = '#545659'
+		# Initialise
+		self.initialise()
+		# Add controls
+		self.add_controls()
+	
+	def initialise(self):
+		# Add label
+		label = ui.Label(text='pip install')
+		label.name = 'label_1'
+		label.frame = (15, self.height * 0.5 - 20, 90, 40)
+		label.flex = 'TB'
+		label.font = ('<system-bold>', 18)
+		label.text_color = '#FAFAFA'
+		self.add_subview(label)
+		textfield = ui.TextField()
+		textfield.frame = (105, self.height * 0.5 - 20, 185, 40)
+		textfield.placeholder = 'python package'
+		textfield.autocapitalization_type = ui.AUTOCAPITALIZE_NONE
+		textfield.clear_button_mode = 'while_editing'
+		textfield.action = self.request_download
+		textfield.delegate = TextFieldDelegate()
+		self.add_subview(textfield)
+	
+	def add_controls(self):
+		# Add button
+		search_button = ui.ButtonItem(title='Search')
+		self.right_button_items = [search_button]
+		# Refresh view
+		self.set_needs_display()
+	
+	@ui.in_background
+	def request_download(self, sender):
+		# Check if valid package name
+		pkg = sender.text.lower()
+		
+		response = s.get(uri.format(package=pkg))
 
-    response = s.get(uri.format(package=pkg))
+		if response.status_code == 200:
+			pypi_info = response.json()
+			if pkg in python2packages.keys():
+				latest_release = select_build(pypi_info, build='0.12')
+			else: 
+				latest_release = select_latest(pypi_info, version='2.7')
+				# Check package type
+				package_type = latest_release.get('packagetype', None)
+				# Binary distribution - C-bindings compiled
+				if package_type == 'bdist_wheel': 
+					console.alert('Wheel - I don\'t know what to do with this')
+				# Source distribution - C-bindings not compiled yet
+				elif package_type == 'sdist': 
+					package_uri = latest_release.get('url', None)
+					filename = package_uri.split('/')[-1]
+					download = s.get(package_uri, allow_redirects=True)
+					download_object = io.BytesIO(download.content)
+					# Decompress archive
+					with tarfile.open(fileobj=download_object, mode='r') as archive:
+						package_folder = re.compile(r'[^/]*?/'+re.escape(pkg)+r'[/$]')
+						selection = [tarinfo for tarinfo in archive.getmembers() if package_folder.match(tarinfo.name)]
+						base_path = selection[0].name.split('/')[0]
+						for tarinfo in selection:
+							tarinfo.name = tarinfo.name[len(base_path) + 1:]
+						archive.extractall(members=selection, path=os.path.expanduser('~/Documents/site-packages'))
+					console.hud_alert('Package installed!')
+					download_object.close()
+					self.close()
+					workflow.stop()
+		else:
+			sender.text_color = '#c7180c'
+			console.hud_alert('Package not found')		
 
-    if response.status_code == 200:
-        pypi_info = response.json()
-        if pkg in python2packages.keys():
-            latest_release = select_build(pypi_info, build='0.12')
-        else: 
-            latest_release = select_latest(pypi_info, version='2.7')
-        # Check package type
-        package_type = latest_release.get('packagetype', None)
-        if package_type == 'bdist_wheel': # Binary distribution - C-bindings compiled
-            print 'Wheel - I don\'t know what to do with this'
-        elif package_type == 'sdist': # Source distribution - C-bindings not compiled yet
-            print 'Building from source'
-            package_uri = latest_release.get('url', None)
-            filename = package_uri.split('/')[-1]
-            download = s.get(package_uri, allow_redirects=True)
-            download_object = io.BytesIO(download.content)
-            # Decompress archive
-            with tarfile.open(fileobj=download_object, mode='r') as archive:
-                package_folder = re.compile(r'[^/]*?/'+re.escape(pkg)+r'[/$]')
-                selection = [tarinfo for tarinfo in archive.getmembers() if package_folder.match(tarinfo.name)]
-                base_path = selection[0].name.split('/')[0]
-                for tarinfo in selection:
-                    tarinfo.name = tarinfo.name[len(base_path) + 1:]
-                archive.extractall(members=selection)
-            download_object.close()
-    else:
-        print('Package not found')
-
+input_view = InputView()
+input_view.present('sheet', hide_title_bar=True)
