@@ -20,7 +20,7 @@ s.headers = {
 uri = 'https://pypi.org/pypi/{package}/json'
 
 python2packages = {
-    'pxy': '0.12'
+    'pyx': '0.12'
 }
 
 # In[1]: Helper functions
@@ -31,7 +31,6 @@ def filter_release_version(release_details, version):
 def select_build(pypi_info, build, version='2'):
     releases = pypi_info.get('releases', None)
     release_versions = sorted([v for v in releases.keys() if build in v])
-    print release_versions
     if releases:
         release_details = releases.get(release_versions[-1], None)
         if release_details:
@@ -86,6 +85,7 @@ class InputView(ui.View):
 		self.add_subview(label)
 		textfield = ui.TextField()
 		textfield.frame = (105, self.height * 0.5 - 20, 185, 40)
+		textfield.flex = 'TB'
 		textfield.placeholder = 'python package'
 		textfield.autocapitalization_type = ui.AUTOCAPITALIZE_NONE
 		textfield.clear_button_mode = 'while_editing'
@@ -110,32 +110,32 @@ class InputView(ui.View):
 		if response.status_code == 200:
 			pypi_info = response.json()
 			if pkg in python2packages.keys():
-				latest_release = select_build(pypi_info, build='0.12')
+				latest_release = select_build(pypi_info, build=python2packages[pkg])
 			else: 
 				latest_release = select_latest(pypi_info, version='2.7')
-				# Check package type
-				package_type = latest_release.get('packagetype', None)
+			# Check package type
+			package_type = latest_release.get('packagetype', None)
 				# Binary distribution - C-bindings compiled
-				if package_type == 'bdist_wheel': 
+			if package_type == 'bdist_wheel': 
 					console.alert('Wheel - I don\'t know what to do with this')
 				# Source distribution - C-bindings not compiled yet
-				elif package_type == 'sdist': 
-					package_uri = latest_release.get('url', None)
-					filename = package_uri.split('/')[-1]
-					download = s.get(package_uri, allow_redirects=True)
-					download_object = io.BytesIO(download.content)
-					# Decompress archive
-					with tarfile.open(fileobj=download_object, mode='r') as archive:
-						package_folder = re.compile(r'[^/]*?/'+re.escape(pkg)+r'[/$]')
-						selection = [tarinfo for tarinfo in archive.getmembers() if package_folder.match(tarinfo.name)]
-						base_path = selection[0].name.split('/')[0]
-						for tarinfo in selection:
-							tarinfo.name = tarinfo.name[len(base_path) + 1:]
-						archive.extractall(members=selection, path=os.path.expanduser('~/Documents/site-packages'))
-					console.hud_alert('Package installed!')
-					download_object.close()
-					self.close()
-					workflow.stop()
+			elif package_type == 'sdist': 
+				package_uri = latest_release.get('url', None)
+				filename = package_uri.split('/')[-1]
+				download = s.get(package_uri, allow_redirects=True)
+				download_object = io.BytesIO(download.content)
+				# Decompress archive
+				with tarfile.open(fileobj=download_object, mode='r') as archive:
+					package_folder = re.compile(r'[^/]*?/'+re.escape(pkg)+r'[/$]')
+					selection = [tarinfo for tarinfo in archive.getmembers() if package_folder.match(tarinfo.name)]
+					base_path = selection[0].name.split('/')[0]
+					for tarinfo in selection:
+						tarinfo.name = tarinfo.name[len(base_path) + 1:]
+					archive.extractall(members=selection, path=os.path.expanduser('~/Documents/site-packages'))
+				console.hud_alert('Package installed!')
+				download_object.close()
+				self.close()
+				workflow.stop()
 		else:
 			sender.text_color = '#c7180c'
 			console.hud_alert('Package not found')		
