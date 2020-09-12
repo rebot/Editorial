@@ -5,6 +5,7 @@ import re
 import ui
 import sys
 import urllib
+import zipfile
 import tarfile
 import workflow
 import requests as r
@@ -85,8 +86,8 @@ class InputView(ui.View):
 		self.add_subview(label)
 		textfield = ui.TextField()
 		textfield.frame = (105, self.height * 0.5 - 20, 185, 40)
-		textfield.flex = 'TB'
 		textfield.placeholder = 'python package'
+		textfield.flex = 'TB'
 		textfield.autocapitalization_type = ui.AUTOCAPITALIZE_NONE
 		textfield.clear_button_mode = 'while_editing'
 		textfield.action = self.request_download
@@ -113,29 +114,43 @@ class InputView(ui.View):
 				latest_release = select_build(pypi_info, build=python2packages[pkg])
 			else: 
 				latest_release = select_latest(pypi_info, version='2.7')
-			# Check package type
-			package_type = latest_release.get('packagetype', None)
+				# Check package type
+				package_type = latest_release.get('packagetype', None)
 				# Binary distribution - C-bindings compiled
-			if package_type == 'bdist_wheel': 
+				if package_type == 'bdist_wheel': 
 					console.alert('Wheel - I don\'t know what to do with this')
 				# Source distribution - C-bindings not compiled yet
-			elif package_type == 'sdist': 
-				package_uri = latest_release.get('url', None)
-				filename = package_uri.split('/')[-1]
-				download = s.get(package_uri, allow_redirects=True)
-				download_object = io.BytesIO(download.content)
-				# Decompress archive
-				with tarfile.open(fileobj=download_object, mode='r') as archive:
-					package_folder = re.compile(r'[^/]*?/'+re.escape(pkg)+r'[/$]')
-					selection = [tarinfo for tarinfo in archive.getmembers() if package_folder.match(tarinfo.name)]
-					base_path = selection[0].name.split('/')[0]
-					for tarinfo in selection:
-						tarinfo.name = tarinfo.name[len(base_path) + 1:]
-					archive.extractall(members=selection, path=os.path.expanduser('~/Documents/site-packages'))
-				console.hud_alert('Package installed!')
-				download_object.close()
-				self.close()
-				workflow.stop()
+				elif package_type == 'sdist': 
+					package_uri = latest_release.get('url', None) 
+					filename = os.path.basename(package_uri)
+					extension = os.path.splitext(package_uri)[1]
+					download = s.get(package_uri, allow_redirects=True)
+					download_object = io.BytesIO(download.content)
+					# Decompress archive
+					if '.tar.gz' in filename:
+						with tarfile.open(fileobj=download_object, mode='r') as archive:
+							package_folder = re.compile(r'[^/]*?/'+re.escape(pkg)+r'[/$]')
+							selection = [tarinfo for tarinfo in archive.getmembers() if package_folder.match(tarinfo.name)]
+							base_path = selection[0].name.split('/')[0]
+							for tarinfo in selection:
+								tarinfo.name = tarinfo.name[len(base_path) + 1:]
+							archive.extractall(members=selection, path=os.path.expanduser('~/Documents/site-packages'))
+						console.hud_alert('Package installed!')
+						download_object.close()
+						self.close()
+						workflow.stop()
+					elif extension == '.zip':
+						with zipfile.ZipFile(file=download_object, mode='r') as archive:
+							package_folder = re.compile(r'[^/]*?/'+re.escape(pkg)+r'[/$]')
+							selection = [zipinfo for zipinfo in archive.infolist() if package_folder.match(zipinfo.name)]
+							base_path = selection[0].name.split('/')[0]
+							for zipinfo in selection:
+								zipinfo.name = zipinfo.name[len(base_path) + 1:]
+							archive.extractall(members=selection, path=os.path.expanduser('~/Documents/site-packages'))
+						console.hud_alert('Package installed!')
+						download_object.close()
+						self.close()
+						workflow.stop()
 		else:
 			sender.text_color = '#c7180c'
 			console.hud_alert('Package not found')		
