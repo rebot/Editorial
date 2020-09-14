@@ -4,6 +4,7 @@ import io
 import re
 import ui
 import sys
+import shutil
 import urllib
 import zipfile
 import tarfile
@@ -141,12 +142,18 @@ class InputView(ui.View):
 						workflow.stop()
 					elif extension == '.zip':
 						with zipfile.ZipFile(file=download_object, mode='r') as archive:
-							package_folder = re.compile(r'[^/]*?/'+re.escape(pkg)+r'[/$]')
-							selection = [zipinfo for zipinfo in archive.infolist() if package_folder.match(zipinfo.name)]
-							base_path = selection[0].name.split('/')[0]
-							for zipinfo in selection:
-								zipinfo.name = zipinfo.name[len(base_path) + 1:]
-							archive.extractall(members=selection, path=os.path.expanduser('~/Documents/site-packages'))
+							package_folder = re.compile(r'.*?/('+re.escape(pkg)+r'(?:/.*$|$))')
+							selection = [name for name in archive.namelist() if package_folder.match(name)]
+							for member in selection:
+								filename = package_folder.match(member).group(1)
+								path = os.path.join(os.path.expanduser('~/Documents/site-packages'), filename)
+								source = archive.open(member)
+								# Check if path exists
+								if not os.path.exists(os.path.dirname(path)):
+									os.makedirs(os.path.dirname(path))
+								target = open(path, 'wb')
+								with source, target:
+									shutil.copyfileobj(source, target)
 						console.hud_alert('Package installed!')
 						download_object.close()
 						self.close()
