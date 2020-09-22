@@ -6,6 +6,19 @@ import editor
 import photos
 import console
 import workflow
+import StringIO
+from PIL import Image
+
+def ui2pil(imgIn):
+    # create a fake png file in memory
+    memoryFile = StringIO.StringIO( imgIn.to_png() )
+    # this creates the pil image, but does not read the data
+    imgOut = Image.open(memoryFile)
+    # this force the data to be read
+    imgOut.load()
+    # this releases the memory from the png file
+    memoryFile.close()
+    return imgOut
 
 class PathView (ui.View):
     def __init__(self, frame):
@@ -46,7 +59,7 @@ class SketchView (ui.View):
         width, height = ui.get_window_size()
         canvas_size = max(width, height)
         frame = (0, 0, canvas_size, canvas_size)
-        self.background_color = (0, 0, 0, 1)
+        self.background_color = '#1F2326'
         self.tint_color = 'white' #274197'
         iv = ui.ImageView(frame=frame)
         iv.background_color = (0, 0, 0, 0)
@@ -85,8 +98,10 @@ class SketchView (ui.View):
             with ui.ImageContext(self.width, self.height) as ctx:
                 self.image_view.image.draw()
                 img = ctx.get_image()
-                buffer = io.BytesIO() #(buffer, 'png')
-                editor.set_file_contents(filename, img.to_png(), 'dropbox')
+                img = ui2pil(img)
+                bbox = img.getbbox()
+                img = img.crop(bbox)
+                editor.set_file_contents(filename, img._repr_png_(), 'dropbox')
                 editor.insert_text('![test](../' + filename + ')')
                 self.close()
         else:
@@ -105,7 +120,7 @@ clear_button.title = 'Clear'
 clear_button.tint_color = '#526172'
 clear_button.action = v.clear_action
 v.right_button_items = [save_button, clear_button, back_button]
-v.present('fullscreen', title_bar_color='black')
+v.present('fullscreen', title_bar_color='#414347')
 v = v.objc_instance
 for _ in range(1, 5): 
 	v = v.superview()
